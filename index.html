@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MeshLoom: Feed-Forward Non-Rigid Registration of Mesh Sequences</title>
+  <meta name="description" content="MeshLoom is a feed-forward network for non-rigid registration of mesh sequences, supporting variable-length inputs, open-vocabulary categories, motion interpolation, and mesh morphing.">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./libs/three/three.module.js",
+      "three/addons/": "./libs/three/addons/"
+    }
+  }
+  </script>
+  <style>
+    :root {
+      --primary: #3b82f6;
+      --primary-dark: #2563eb;
+      --accent: #06b6d4;
+      --bg-dark: #0f172a;
+      --bg-darker: #020617;
+      --bg-section: #f8fafc;
+      --bg-section-alt: #ffffff;
+      --text: #1e293b;
+      --text-light: #64748b;
+      --text-lighter: #94a3b8;
+      --border: #e2e8f0;
+      --card-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      --viewer-bg: #111827;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--text);
+      background: var(--bg-section-alt);
+      line-height: 1.6;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(135deg, var(--bg-darker) 0%, var(--bg-dark) 50%, #162033 100%);
+      padding: 4.5rem 1.5rem 3rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 30% 80%, rgba(6,182,212,0.12) 0%, transparent 60%),
+                  radial-gradient(ellipse at 70% 20%, rgba(59,130,246,0.10) 0%, transparent 60%);
+    }
+    .hero-content { position: relative; max-width: 1100px; margin: 0 auto; }
+    .hero h1 {
+      font-size: clamp(1.7rem, 3.8vw, 3.1rem); font-weight: 800; color: #fff;
+      letter-spacing: -0.025em; line-height: 1.18;
+      margin-bottom: 0.5rem;
+    }
+    .hero h1 .brand {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero .subtitle {
+      font-size: clamp(1rem, 1.6vw, 1.25rem); color: rgba(255,255,255,0.55);
+      font-weight: 400; max-width: 800px; margin: 0 auto 2rem;
+    }
+
+    /* ── Authors / Affiliations ── */
+    .authors {
+      display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 0.35rem 1.1rem;
+      max-width: 900px; margin: 0 auto 1rem;
+      font-size: clamp(0.95rem, 1.25vw, 1.1rem);
+      color: rgba(255,255,255,0.92);
+      font-weight: 500;
+    }
+    .authors .author { white-space: nowrap; }
+    .authors .author a { color: inherit; text-decoration: none; border-bottom: 1px dotted rgba(255,255,255,0.3); }
+    .authors .author a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+    .authors sup {
+      color: var(--accent); font-weight: 700;
+      font-size: 0.78em; margin-left: 1px;
+    }
+    .affiliations {
+      display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 0.4rem 1.2rem;
+      max-width: 900px; margin: 0 auto 1.5rem;
+      font-size: clamp(0.82rem, 1vw, 0.95rem);
+      color: rgba(255,255,255,0.55);
+      font-weight: 400;
+    }
+    .affiliations .aff { white-space: nowrap; }
+    .affiliations sup {
+      color: var(--accent); font-weight: 700;
+      font-size: 0.85em; margin-right: 2px;
+    }
+
+    /* ── Action buttons (arXiv, PDF, BibTeX) ── */
+    .actions {
+      display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 0.6rem;
+      margin: 0 auto 2rem;
+      max-width: 900px;
+    }
+    .action-btn {
+      display: inline-flex; align-items: center; gap: 0.55rem;
+      padding: 0.7rem 1.3rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #fff;
+      font-size: 0.92rem; font-weight: 600;
+      text-decoration: none;
+      backdrop-filter: blur(6px);
+      transition: all 0.2s ease;
+    }
+    .action-btn:hover {
+      background: rgba(59,130,246,0.25);
+      border-color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(59,130,246,0.25);
+    }
+    .action-btn svg {
+      width: 18px; height: 18px;
+      fill: currentColor; flex-shrink: 0;
+    }
+    .action-btn.primary {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-color: transparent;
+    }
+    .action-btn.primary:hover {
+      filter: brightness(1.1);
+      box-shadow: 0 6px 24px rgba(6,182,212,0.4);
+    }
+
+    /* ── Table of Contents (sticky nav) ── */
+    .toc {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(15,23,42,0.92);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 0.75rem 1rem;
+    }
+    .toc-inner {
+      max-width: 1200px; margin: 0 auto;
+      display: flex; justify-content: center; gap: 0.5rem;
+      flex-wrap: wrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .toc a {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 999px;
+      color: rgba(255,255,255,0.75); text-decoration: none;
+      font-size: 0.85rem; font-weight: 500;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .toc a:hover {
+      background: rgba(59,130,246,0.18);
+      color: #fff;
+    }
+
+    /* ── Interaction Hint Banner ── */
+    .interaction-hint {
+      background: linear-gradient(90deg, #eef6ff 0%, #f0fdf4 50%, #eef6ff 100%);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      text-align: center;
+    }
+    .hint-inner {
+      max-width: 1200px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: center;
+      gap: 2rem; flex-wrap: wrap;
+    }
+    .hint-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.85rem; color: var(--text-light); font-weight: 500;
+    }
+    .hint-icon {
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(59,130,246,0.1);
+      border-radius: 50%;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+
+    /* ── Section Divider ── */
+    .section-divider {
+      height: 6px;
+      background: linear-gradient(90deg, var(--primary), var(--accent), var(--primary));
+      opacity: 0.35;
+    }
+
+    /* ── Sections ── */
+    .section {
+      padding: 4rem 2rem;
+      border-top: 1px solid var(--border);
+    }
+    .section:nth-child(even) { background: var(--bg-section); }
+    .section-inner { max-width: 1200px; margin: 0 auto; }
+    .section-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff; font-size: 0.9rem; font-weight: 700;
+      margin-right: 0.75rem;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    .section-title {
+      font-size: 1.8rem; font-weight: 700; letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+      display: flex; align-items: center;
+    }
+    .section-desc {
+      max-width: 900px; margin: 0 0 2rem;
+      color: var(--text-light); font-size: 0.95rem;
+      font-weight: 400; line-height: 1.6;
+    }
+    .section-desc strong { color: var(--text-light); font-weight: 400; }
+
+    .subsection { margin-bottom: 3.5rem; }
+    .subsection:last-child { margin-bottom: 0; }
+    .subsection-title {
+      font-size: 1.3rem; font-weight: 600; margin-bottom: 0.35rem;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .subsection-title .badge {
+      font-size: 0.7rem; font-weight: 600;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff; padding: 0.2rem 0.6rem; border-radius: 999px;
+    }
+    .subsection-desc {
+      max-width: 900px;
+      color: var(--text-light); font-size: 0.95rem;
+      font-weight: 400; line-height: 1.6;
+      margin-bottom: 1.25rem;
+    }
+    .subsection-desc strong { color: var(--text-light); font-weight: 400; }
+
+    /* ── Controls ── */
+    .controls-bar {
+      display: flex; align-items: center; gap: 1rem;
+      margin-bottom: 1rem; flex-wrap: wrap;
+    }
+    .select-wrapper {
+      position: relative;
+    }
+    .select-label {
+      font-size: 0.78rem; font-weight: 600;
+      color: var(--text-light);
+      margin-bottom: 0.35rem;
+      display: flex; align-items: center; gap: 0.4rem;
+    }
+    .select-label svg {
+      width: 14px; height: 14px; fill: var(--primary); flex-shrink: 0;
+    }
+    .select-wrapper select {
+      appearance: none;
+      -webkit-appearance: none;
+      background: #fff;
+      border: 2px solid var(--primary);
+      border-radius: var(--radius-sm);
+      padding: 0.55rem 2.8rem 0.55rem 1rem;
+      font-family: inherit; font-size: 0.88rem; font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 240px;
+    }
+    .select-wrapper select:hover {
+      border-color: var(--primary-dark);
+      box-shadow: 0 2px 8px rgba(59,130,246,0.15);
+    }
+    .select-wrapper select:focus {
+      outline: none; border-color: var(--primary-dark);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    }
+    .select-wrapper::after {
+      content: ''; position: absolute;
+      right: 0.9rem; bottom: 14px;
+      width: 0; height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid var(--primary);
+      pointer-events: none;
+    }
+
+    /* ── Method pills (comparison) ── */
+    .method-pills {
+      display: flex; flex-wrap: wrap; gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+    .method-pill {
+      padding: 0.35rem 0.9rem;
+      font-size: 0.78rem; font-weight: 500;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #fff; color: var(--text);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .method-pill:hover {
+      border-color: var(--primary); color: var(--primary);
+    }
+    .method-pill.active {
+      background: var(--primary); color: #fff;
+      border-color: var(--primary);
+    }
+    /* ── Viewer grid ── */
+    .viewer-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .viewer-grid.three-col {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+    .viewer-cell {
+      position: relative;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--card-shadow);
+      background: var(--viewer-bg);
+    }
+    .viewer-label {
+      position: absolute; top: 0.6rem; left: 0.8rem;
+      z-index: 10;
+      font-size: 0.92rem; font-weight: 600;
+      color: rgba(255,255,255,0.95);
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(6px);
+      padding: 0.3rem 0.85rem;
+      border-radius: 999px;
+    }
+    .viewer-canvas {
+      width: 100%; height: 420px;
+      display: block;
+    }
+    .three-col .viewer-canvas {
+      height: 380px;
+    }
+    .viewer-loading {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: var(--viewer-bg);
+      color: rgba(255,255,255,0.6);
+      font-size: 0.85rem;
+      z-index: 5;
+      transition: opacity 0.3s;
+    }
+    .viewer-loading.hidden { opacity: 0; pointer-events: none; }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid rgba(255,255,255,0.15);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 0.75rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .viewer-empty {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255,255,255,0.3);
+      font-size: 0.85rem;
+      z-index: 4;
+    }
+
+    /* ── Playback controls ── */
+    .playback {
+      display: flex; align-items: center; gap: 1rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.7rem 1.2rem;
+    }
+    .play-btn {
+      width: 42px; height: 42px;
+      border: none; border-radius: 50%;
+      background: var(--primary); color: #fff;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    .play-btn:hover { background: var(--primary-dark); }
+    .play-btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+    .frame-slider {
+      flex: 1;
+      appearance: none;
+      -webkit-appearance: none;
+      height: 7px;
+      border-radius: 4px;
+      background: var(--border);
+      outline: none;
+      position: relative;
+    }
+    .frame-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: var(--primary);
+      cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+    .frame-info {
+      font-size: 0.95rem; font-weight: 600;
+      color: var(--text-light);
+      min-width: 80px; text-align: center;
+      flex-shrink: 0;
+    }
+    .speed-btn {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.88rem; font-weight: 600;
+      color: var(--text-light);
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .speed-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* ── Footer ── */
+    footer {
+      background: var(--bg-dark);
+      color: rgba(255,255,255,0.4);
+      text-align: center;
+      padding: 2rem;
+      font-size: 0.8rem;
+    }
+
+    /* ── Teaser & Figure blocks ── */
+    .figure-block {
+      max-width: 1000px; margin: 0 auto;
+      padding: 2.5rem 1.5rem 1rem;
+    }
+    .figure-block.tight { padding-top: 1rem; }
+    .figure-block img {
+      display: block; width: 100%; height: auto;
+      max-width: 920px; margin: 0 auto;
+      border-radius: var(--radius);
+      box-shadow: var(--card-shadow);
+      background: #fff;
+    }
+    .figure-caption {
+      max-width: 920px; margin: 1rem auto 0;
+      font-size: 0.92rem; color: var(--text-light);
+      line-height: 1.65; text-align: center;
+    }
+    .figure-caption.left-aligned {
+      text-align: left;
+      hyphens: auto;
+    }
+    .figure-caption strong { color: var(--text); font-weight: 600; }
+
+    /* ── TL;DR block (right after teaser) ── */
+    .tldr {
+      max-width: 920px; margin: 1.5rem auto 0;
+      padding: 1.5rem 1.75rem;
+      background: linear-gradient(135deg, #eef6ff 0%, #f0fdfa 100%);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--primary);
+      border-radius: var(--radius);
+    }
+    .tldr-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.1rem 1.5rem;
+    }
+    .tldr-item h4 {
+      font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--primary);
+      margin: 0 0 0.35rem;
+    }
+    .tldr-item p {
+      font-size: 0.95rem; line-height: 1.55;
+      color: var(--text); margin: 0;
+    }
+    .tldr-item strong { font-weight: 600; }
+
+    /* Group label inside Take-Aways (legacy — not currently used) */
+    .takeaway-group { display: none; }
+
+    /* ── Abstract & prose blocks ── */
+    .prose {
+      max-width: 900px; margin: 0 auto;
+      font-size: 1.02rem; line-height: 1.75; color: var(--text);
+    }
+    .prose p { margin-bottom: 1rem; }
+    .prose p:last-child { margin-bottom: 0; }
+    .prose strong { color: var(--text); font-weight: 600; }
+
+    /* Center-aligned title for non-numbered sections */
+    .section.centered .section-title {
+      justify-content: center; text-align: center;
+    }
+    .section.centered .section-desc {
+      text-align: center;
+      margin-left: auto; margin-right: auto;
+    }
+
+    /* ── BibTeX block ── */
+    .bibtex-wrap {
+      max-width: 1000px; margin: 0 auto;
+      position: relative;
+    }
+    .bibtex {
+      background: var(--bg-dark); color: #e2e8f0;
+      border-radius: var(--radius);
+      padding: 1.5rem 1.75rem;
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.88rem; line-height: 1.7;
+      overflow-x: auto;
+      white-space: pre;
+      box-shadow: var(--card-shadow);
+    }
+    .copy-btn {
+      position: absolute; top: 0.75rem; right: 0.75rem;
+      background: rgba(255,255,255,0.08);
+      color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: var(--radius-sm);
+      padding: 0.4rem 0.8rem;
+      font-size: 0.78rem; font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex; align-items: center; gap: 0.4rem;
+    }
+    .copy-btn:hover {
+      background: rgba(59,130,246,0.3);
+      border-color: var(--primary);
+    }
+    .copy-btn svg { width: 14px; height: 14px; fill: currentColor; }
+    .copy-btn.copied {
+      background: rgba(16,185,129,0.25);
+      border-color: #10b981; color: #6ee7b7;
+    }
+
+    /* ── Take-Aways grid ── */
+    .takeaways {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.1rem;
+      max-width: 1100px; margin: 0 auto;
+    }
+    .takeaways.three-up {
+      grid-template-columns: repeat(3, 1fr);
+      max-width: 1100px;
+    }
+    @media (max-width: 980px) {
+      .takeaways.three-up { grid-template-columns: repeat(2, 1fr); }
+    }
+    .takeaway {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.4rem 1.3rem;
+      text-align: left;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      position: relative; overflow: hidden;
+    }
+    .takeaway::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .takeaway:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--card-shadow);
+      border-color: rgba(59,130,246,0.35);
+    }
+    .takeaway:hover::before { opacity: 1; }
+    .takeaway-icon {
+      font-size: 1.6rem; margin-bottom: 0.5rem;
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 42px; height: 42px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(59,130,246,0.12), rgba(6,182,212,0.12));
+    }
+    .takeaway h3 {
+      font-size: 1.02rem; font-weight: 700; color: var(--text);
+      margin: 0.4rem 0 0.4rem;
+      letter-spacing: -0.01em;
+    }
+    .takeaway p {
+      font-size: 0.88rem; line-height: 1.55;
+      color: var(--text-light); margin: 0;
+    }
+
+    /* ── Results intro cards ── */
+    .results-intro { padding-bottom: 2.5rem; }
+    .results-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+      max-width: 1100px; margin: 0.5rem auto 0;
+    }
+    .results-card {
+      display: block;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.4rem 1.3rem 1.2rem;
+      text-align: left; text-decoration: none;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .results-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 28px rgba(59,130,246,0.18);
+      border-color: var(--primary);
+    }
+    .results-card-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff; font-weight: 700; font-size: 0.95rem;
+      margin-bottom: 0.7rem;
+    }
+    .results-card h3 {
+      font-size: 1.05rem; font-weight: 700; color: var(--text);
+      margin: 0 0 0.35rem; letter-spacing: -0.01em;
+    }
+    .results-card p {
+      font-size: 0.87rem; line-height: 1.55;
+      color: var(--text-light); margin: 0;
+    }
+    .results-card::after {
+      content: '↓'; position: absolute;
+      top: 1.2rem; right: 1.2rem;
+      color: var(--primary); font-size: 1.1rem; font-weight: 700;
+      opacity: 0; transition: all 0.2s;
+    }
+    .results-card:hover::after {
+      opacity: 1; transform: translateY(2px);
+    }
+
+    /* Hint title in interaction-hint */
+    .hint-title {
+      font-size: 0.85rem; font-weight: 600;
+      color: var(--text); white-space: nowrap;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .hero { padding: 2.75rem 1rem 2rem; }
+      .hero h1 { font-size: 1.5rem; line-height: 1.25; }
+      .hero .subtitle { font-size: 0.95rem; margin-bottom: 1.4rem; }
+      .authors { gap: 0.3rem 0.8rem; font-size: 0.9rem; }
+      .affiliations { gap: 0.3rem 0.85rem; font-size: 0.78rem; }
+      .actions { gap: 0.45rem; }
+      .action-btn { padding: 0.55rem 1rem; font-size: 0.82rem; }
+      .action-btn svg { width: 16px; height: 16px; }
+      .section { padding: 2.5rem 1rem; }
+      .section-title { font-size: 1.4rem; }
+      .viewer-grid { grid-template-columns: 1fr; }
+      .viewer-grid.three-col { grid-template-columns: 1fr; }
+      .three-col .viewer-canvas { height: 280px; }
+      .viewer-canvas { height: 280px; }
+      .toc { padding: 0.5rem 0.5rem; }
+      .toc-inner { justify-content: flex-start; flex-wrap: nowrap; }
+      .toc a { font-size: 0.78rem; padding: 0.4rem 0.85rem; }
+      .hint-inner { gap: 0.75rem; }
+      .hint-item { font-size: 0.78rem; }
+      .method-pills { gap: 0.3rem; }
+      .method-pill { font-size: 0.72rem; padding: 0.3rem 0.7rem; }
+      .playback { flex-wrap: wrap; padding: 0.6rem 0.8rem; }
+      .frame-info { min-width: 70px; font-size: 0.82rem; }
+      .select-wrapper select { min-width: 100%; width: 100%; }
+      .controls-bar { flex-direction: column; align-items: stretch; }
+      .figure-block { padding: 1.5rem 1rem 0.5rem; }
+      .figure-caption { font-size: 0.85rem; }
+      .prose { font-size: 0.95rem; }
+      .tldr { padding: 1.2rem 1.1rem; margin-left: 1rem; margin-right: 1rem; }
+      .tldr-item p { font-size: 0.88rem; }
+      .takeaways { grid-template-columns: 1fr; gap: 0.8rem; }
+      .takeaway { padding: 1.1rem 1rem; }
+      .takeaway h3 { font-size: 0.98rem; }
+      .takeaway p { font-size: 0.85rem; }
+      .results-cards { grid-template-columns: 1fr; gap: 0.7rem; }
+      .results-card { padding: 1.1rem 1rem; }
+      .hint-title { width: 100%; text-align: center; margin-bottom: 0.3rem; }
+      .bibtex { font-size: 0.75rem; padding: 1rem 0.9rem; padding-top: 2.6rem; }
+      .copy-btn { top: 0.5rem; right: 0.5rem; padding: 0.3rem 0.6rem; font-size: 0.72rem; }
+    }
+
+    @media (max-width: 480px) {
+      .hero h1 { font-size: 1.3rem; }
+      .actions { flex-direction: column; align-items: stretch; }
+      .action-btn { justify-content: center; }
+    }
+
+    /* ── Utility ── */
+    .color-note {
+      max-width: 1200px; margin: 0 auto;
+      padding: 0.8rem 1.5rem;
+      font-size: 0.95rem; font-style: italic;
+      color: var(--text-light);
+      line-height: 1.6;
+    }
+    .color-note em {
+      font-style: normal; font-weight: 600; color: var(--text);
+    }
+
+    /* ── File-protocol banner ── */
+    .file-banner {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0;
+      z-index: 9999;
+      background: #dc2626;
+      color: #fff;
+      padding: 1rem 1.5rem;
+      font-size: 1.05rem;
+      text-align: center;
+      line-height: 1.6;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+    .file-banner.show { display: block; }
+    .file-banner code {
+      background: rgba(255,255,255,0.2);
+      padding: 0.1em 0.45em; border-radius: 3px;
+      font-family: monospace; font-size: 0.85em;
+    }
+    .file-banner a {
+      color: #fde68a; font-weight: 700; text-decoration: underline;
+    }
+    body.file-blocked { padding-top: 56px; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════ File-protocol Banner (shown only when opened via file://) ═══════ -->
+<div class="file-banner" id="file-banner">
+  ⚠️ <strong>Preview mode</strong> — 3D models cannot load when this page is opened directly from disk.
+  Please serve the folder via a local web server (e.g. <code>python3 -m http.server</code>) and open it through <code>http://localhost</code>.
+</div>
+<script>
+  if (window.location.protocol === 'file:' && !new URLSearchParams(window.location.search).has('launched')) {
+    document.getElementById('file-banner').classList.add('show');
+    document.body.classList.add('file-blocked');
+  }
+</script>
+
+<!-- ═══════ Hero ═══════ -->
+<section class="hero">
+  <div class="hero-content">
+    <h1>
+      <span class="brand">MeshLoom</span>:
+      Feed-Forward Non-Rigid Registration of Mesh Sequences
+    </h1>
+    <p class="subtitle">
+      One feed-forward pass &mdash; from heterogeneous mesh frames to a topology-consistent sequence.
+    </p>
+
+    <div class="actions">
+      <a class="action-btn primary" href="#" id="arxiv-link" target="_blank" rel="noopener" aria-label="arXiv paper">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4l7.5 8L3 20h3.6l5.4-6 5.4 6H21l-7.5-8L21 4h-3.6l-5.4 6L6.6 4H3z"/></svg>
+        arXiv
+      </a>
+      <a class="action-btn" href="#" id="pdf-link" target="_blank" rel="noopener" aria-label="PDF">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
+        PDF
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ Sticky Table of Contents ═══════ -->
+<nav class="toc" aria-label="Section navigation">
+  <div class="toc-inner">
+    <a href="#teaser">Teaser</a>
+    <a href="#abstract">Abstract</a>
+    <a href="#takeaways">Take-Aways</a>
+    <a href="#method">Method</a>
+    <a href="#results">Results</a>
+  </div>
+</nav>
+
+<!-- ═══════ Teaser Figure ═══════ -->
+<section id="teaser" class="figure-block">
+  <img src="assets/paper/teaser.png" alt="MeshLoom teaser: unifying heterogeneous input meshes into a continuous registered mesh sequence, generalizing across categories, motions, and geometric variations.">
+  <p class="figure-caption left-aligned">
+    <strong>From heterogeneous inputs to a continuous registered sequence.</strong>
+    MeshLoom takes a sparse set of <em>observed</em> meshes with varying vertex counts and connectivity (upper-left) and outputs a topology-consistent sequence in which every frame shares the anchor mesh's vertex set. Because the network learns a continuous motion field, it can also be queried at <em>unseen</em> intermediate timestamps (upper-right). The same model generalizes across categories, motions, and geometric variations (bottom). Colors encode anchor-mesh vertex positions, so corresponding vertices share a color across frames.
+  </p>
+
+  <!-- TL;DR ─ quick framing for first-time readers -->
+  <div class="tldr" aria-label="At a glance">
+    <div class="tldr-grid">
+      <div class="tldr-item">
+        <h4>The Task</h4>
+        <p><strong>Non-rigid mesh registration:</strong> turn a set of meshes with different vertex counts and connectivity into a sequence that shares one consistent topology.</p>
+      </div>
+      <div class="tldr-item">
+        <h4>The Gap</h4>
+        <p>Prior methods are either slow (per-instance optimization), category-restricted, pairwise-only, or output only intermediate quantities &mdash; no single method covers all axes.</p>
+      </div>
+      <div class="tldr-item">
+        <h4>Our Answer</h4>
+        <p><strong>One feed-forward network</strong> that is fast, open-vocabulary, sequence-level, and directly outputs vertex deformations &mdash; plus interpolation and morphing for free.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ Abstract ═══════ -->
+<div class="section-divider"></div>
+<section class="section centered" id="abstract">
+  <div class="section-inner">
+    <h2 class="section-title">Abstract</h2>
+    <div class="prose">
+      <p>
+        We present <strong>MeshLoom</strong>, a feed-forward registration network that <strong>directly reconstructs vertex deformations across mesh sequences</strong>. Our approach advances non-rigid registration beyond existing models, which are typically constrained by costly per-instance optimization, narrow object categories, pairwise-only inputs, or merely intermediate outputs. <strong>The network is simple and efficient, registering multiple meshes within seconds.</strong>
+      </p>
+      <p>
+        At its core lies a <strong>topology-aware encoder–decoder design</strong>. We first introduce a <strong>topology-aware point representation</strong> that encodes the anchor (reference) mesh's topology into its per-vertex features, <strong>disambiguating points that are Euclidean-close yet geodesically distant</strong>. We then propose a multi-modal encoder that fuses this anchor-mesh representation with complementary cues from each frame, such as shape latents and image features. These multi-source signals are compressed into a <strong>compact global motion embedding that captures dense inter-frame correspondence</strong>. A lightweight decoder then queries this global embedding with the anchor-mesh point representation, retrieving per-vertex deformations at target timestamps.
+      </p>
+      <p>
+        Through extensive experiments across diverse motions and object categories, we show that <strong>MeshLoom achieves state-of-the-art results on non-rigid registration</strong>. In addition, our <strong>global embedding-then-query paradigm</strong> naturally enables the network to generate deformations at intermediate timestamps, extending MeshLoom to <strong>motion interpolation</strong> and <strong>mesh morphing</strong>.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ Take-Aways ═══════ -->
+<div class="section-divider"></div>
+<section class="section centered" id="takeaways">
+  <div class="section-inner">
+    <h2 class="section-title">Take-Aways</h2>
+    <p class="section-desc">The six ideas that define MeshLoom.</p>
+    <div class="takeaways three-up">
+      <div class="takeaway">
+        <div class="takeaway-icon">⚡</div>
+        <h3>Fast & feed-forward</h3>
+        <p>Registers a full mesh sequence in seconds &mdash; no per-instance optimization, no iterative refinement.</p>
+      </div>
+      <div class="takeaway">
+        <div class="takeaway-icon">🔀</div>
+        <h3>Sequence-level input</h3>
+        <p>Ingests an entire variable-length sequence in one pass, instead of stitching together pairwise source–target registrations.</p>
+      </div>
+      <div class="takeaway">
+        <div class="takeaway-icon">🎯</div>
+        <h3>Direct vertex deformations</h3>
+        <p>Outputs explicit per-vertex displacements ready to use &mdash; no external solver, no post-processing step.</p>
+      </div>
+      <div class="takeaway">
+        <div class="takeaway-icon">🔗</div>
+        <h3>Topology-aware</h3>
+        <p>Bakes anchor-mesh connectivity into per-vertex features, so close-but-disjoint regions no longer move together.</p>
+      </div>
+      <div class="takeaway">
+        <div class="takeaway-icon">⏱️</div>
+        <h3>Continuous in time</h3>
+        <p>Embed-then-query design lets the network deform the anchor at any timestamp &mdash; interpolation and morphing for free.</p>
+      </div>
+      <div class="takeaway">
+        <div class="takeaway-icon">🌐</div>
+        <h3>Open-vocabulary, SOTA</h3>
+        <p>One model across humans, animals, and general objects &mdash; outperforming existing baselines.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ Method Overview ═══════ -->
+<div class="section-divider"></div>
+<section class="section centered" id="method">
+  <div class="section-inner">
+    <h2 class="section-title">Method Overview</h2>
+    <p class="section-desc">Encode the anchor with its topology, fuse the sequence into one global motion embedding, then query that embedding per vertex per frame.</p>
+    <div class="figure-block tight" style="padding:0;">
+      <img src="assets/paper/pipeline.png" alt="MeshLoom pipeline: anchor mesh is encoded into a topology-aware representation; target meshes and optional guided images are fused by a multi-modal transformer encoder into a global motion embedding; a lightweight decoder queries this embedding to produce the registered output sequence.">
+      <p class="figure-caption left-aligned">
+        <strong>Workflow of MeshLoom.</strong>
+        Given an input mesh sequence whose frames differ in vertex count and connectivity, our network proceeds in three steps. <strong>(1)</strong> Any frame (typically the first) is designated as the anchor mesh and embedded into a topology-aware representation <em>H<sub>a</sub></em>. <strong>(2)</strong> The remaining frames and their (optional) images are encoded into per-frame shape latents <em>S<sub>t</sub></em> and image features <em>I<sub>t</sub></em>, then fused with <em>H<sub>a</sub></em> by a transformer-based encoder to produce a global motion embedding <em>Z</em>. <strong>(3)</strong> A lightweight deformation decoder queries <em>Z</em> with <em>H<sub>a</sub></em> to predict per-vertex deformations of the anchor mesh at every frame, yielding an output sequence with a consistent vertex count and face connectivity.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ Interactive Results: intro ═══════ -->
+<div class="section-divider"></div>
+<section class="section centered results-intro" id="results">
+  <div class="section-inner">
+    <h2 class="section-title">Interactive 3D Results</h2>
+    <p class="section-desc">Explore our registered mesh sequences interactively &mdash; rotate, zoom, and scrub through frames to inspect correspondence at any timestamp.</p>
+    <div class="results-cards">
+      <a href="#comparison" class="results-card">
+        <div class="results-card-num">1</div>
+        <h3>Comparison with Other Methods</h3>
+        <p>Side-by-side against six prior registration baselines on five sequences.</p>
+      </a>
+      <a href="#applications" class="results-card">
+        <div class="results-card-num">2</div>
+        <h3>Applications</h3>
+        <p>Registration across geometric variations, motion interpolation, and mesh morphing.</p>
+      </a>
+      <a href="#visual-results" class="results-card">
+        <div class="results-card-num">3</div>
+        <h3>Additional Visual Results</h3>
+        <p>Fifteen diverse animation sequences spanning humans, animals, and general objects.</p>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ Interaction Hint ═══════ -->
+<div class="interaction-hint">
+  <div class="hint-inner">
+    <span class="hint-title">How to interact with the 3D viewers:</span>
+    <div class="hint-item"><span class="hint-icon">🖱️</span> Drag to rotate</div>
+    <div class="hint-item"><span class="hint-icon">🔍</span> Scroll to zoom</div>
+    <div class="hint-item"><span class="hint-icon">✋</span> Right-drag to pan</div>
+    <div class="hint-item"><span class="hint-icon">▶️</span> Playback to animate</div>
+  </div>
+</div>
+
+<!-- ═══════ Vertex Color Note ═══════ -->
+<div class="color-note">
+  <em>Note on shape coloring:</em> The coloring of each registered mesh is based on vertex positions
+  on the anchor (reference) mesh. Since the registered meshes are deformations of the anchor,
+  corresponding vertices carry the same color across frames.
+</div>
+
+<div class="color-note">
+  <em>Note on mesh resolution:</em> For web display purposes, we decimate meshes shown here to reduce file size.
+</div>
+
+<!-- ═══════ Section: Comparison ═══════ -->
+<div class="section-divider"></div>
+<section class="section" id="comparison">
+  <div class="section-inner">
+    <h2 class="section-title"><span class="section-num">1</span> Comparison with Other Methods</h2>
+    <p class="section-desc">Side-by-side against prior registration baselines. All methods share the same anchor mesh (Frame 0).</p>
+    <div class="controls-bar">
+      <div class="select-wrapper">
+        <div class="select-label">
+          <svg viewBox="0 0 24 24"><path d="M3 4h18v2H3V4zm0 7h12v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+          Select a sequence to view
+        </div>
+        <select id="cmp-select"></select>
+      </div>
+    </div>
+    <div class="select-label" style="margin-bottom: 0.4rem;">Compare with:</div>
+    <div class="method-pills" id="cmp-methods"></div>
+    <div class="viewer-grid three-col">
+      <div class="viewer-cell">
+        <div class="viewer-label">Input Shapes</div>
+        <div class="viewer-empty">Select a sequence above</div>
+        <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+        <canvas class="viewer-canvas" id="cmp-canvas-left"></canvas>
+      </div>
+      <div class="viewer-cell">
+        <div class="viewer-label">MeshLoom (Ours)</div>
+        <div class="viewer-empty">Select a sequence above</div>
+        <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+        <canvas class="viewer-canvas" id="cmp-canvas-center"></canvas>
+      </div>
+      <div class="viewer-cell">
+        <div class="viewer-label" id="cmp-right-label">Other Method</div>
+        <div class="viewer-empty">Select a method above</div>
+        <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+        <canvas class="viewer-canvas" id="cmp-canvas-right"></canvas>
+      </div>
+    </div>
+    <div class="playback" id="cmp-playback">
+      <button class="play-btn" id="cmp-play" title="Play / Pause">
+        <svg viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"/></svg>
+      </button>
+      <input type="range" class="frame-slider" id="cmp-slider" min="0" max="3" value="0" step="1">
+      <span class="frame-info" id="cmp-frame-info">Frame 0 / 3</span>
+      <button class="speed-btn" id="cmp-speed">1×</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ Section: Applications ═══════ -->
+<div class="section-divider"></div>
+<section class="section" id="applications">
+  <div class="section-inner">
+    <h2 class="section-title"><span class="section-num">2</span> Applications</h2>
+    <p class="section-desc">Beyond standard registration, the embed-then-query design extends to motion interpolation and mesh morphing.</p>
+
+    <!-- Registration Across Geometric Variations -->
+    <div class="subsection" id="app-geom">
+      <h3 class="subsection-title">
+        Registration Across Geometric Variations
+        <span class="badge">Registration</span>
+      </h3>
+      <p class="subsection-desc">Generalizes across geometric variations &mdash; e.g., cross-species registration that closely conforms to the input shapes.</p>
+      <div class="controls-bar">
+        <div class="select-wrapper">
+          <div class="select-label">
+            <svg viewBox="0 0 24 24"><path d="M3 4h18v2H3V4zm0 7h12v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+            Select a case to view
+          </div>
+          <select id="geom-select"></select>
+        </div>
+      </div>
+      <div class="viewer-grid">
+        <div class="viewer-cell">
+          <div class="viewer-label">Input Shapes</div>
+          <div class="viewer-empty">Select an example above</div>
+          <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+          <canvas class="viewer-canvas" id="geom-canvas-left"></canvas>
+        </div>
+        <div class="viewer-cell">
+          <div class="viewer-label">Our Registered Output</div>
+          <div class="viewer-empty">Select an example above</div>
+          <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+          <canvas class="viewer-canvas" id="geom-canvas-right"></canvas>
+        </div>
+      </div>
+      <div class="playback" id="geom-playback">
+        <button class="play-btn" id="geom-play" title="Play / Pause">
+          <svg viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"/></svg>
+        </button>
+        <input type="range" class="frame-slider" id="geom-slider" min="0" max="3" value="0" step="1">
+        <span class="frame-info" id="geom-frame-info">Frame 0 / 3</span>
+        <button class="speed-btn" id="geom-speed">1×</button>
+      </div>
+    </div>
+
+    <!-- Motion Interpolation -->
+    <div class="subsection" id="app-interp">
+      <h3 class="subsection-title">
+        Motion Interpolation
+        <span class="badge">Interpolation</span>
+      </h3>
+      <p class="subsection-desc">From sparse input motion states, synthesizes smooth intermediate frames that preserve object identity and local structure.</p>
+      <div class="controls-bar">
+        <div class="select-wrapper">
+          <div class="select-label">
+            <svg viewBox="0 0 24 24"><path d="M3 4h18v2H3V4zm0 7h12v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+            Select a case to view
+          </div>
+          <select id="interp-select"></select>
+        </div>
+      </div>
+      <div class="viewer-grid">
+        <div class="viewer-cell">
+          <div class="viewer-label">Input Shapes (sparse 4 motion states)</div>
+          <div class="viewer-empty">Select an example above</div>
+          <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+          <canvas class="viewer-canvas" id="interp-canvas-left"></canvas>
+        </div>
+        <div class="viewer-cell">
+          <div class="viewer-label">Our Registered Output (dense 16 frames with interpolation)</div>
+          <div class="viewer-empty">Select an example above</div>
+          <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+          <canvas class="viewer-canvas" id="interp-canvas-right"></canvas>
+        </div>
+      </div>
+      <div class="playback" id="interp-playback">
+        <button class="play-btn" id="interp-play" title="Play / Pause">
+          <svg viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"/></svg>
+        </button>
+        <input type="range" class="frame-slider" id="interp-slider" min="0" max="15" value="0" step="1">
+        <span class="frame-info" id="interp-frame-info">Frame 0 / 15</span>
+        <button class="speed-btn" id="interp-speed">1×</button>
+      </div>
+    </div>
+
+    <!-- Mesh Morphing -->
+    <div class="subsection" id="app-morph">
+      <h3 class="subsection-title">
+        Mesh Morphing
+        <span class="badge">Morphing</span>
+      </h3>
+      <p class="subsection-desc">Smooth, coherent transitions between two distinct shapes &mdash; evidence that the encoder learns continuous deformation, not just frame replay.</p>
+      <div class="controls-bar">
+        <div class="select-wrapper">
+          <div class="select-label">
+            <svg viewBox="0 0 24 24"><path d="M3 4h18v2H3V4zm0 7h12v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+            Select a case to view
+          </div>
+          <select id="morph-select"></select>
+        </div>
+      </div>
+      <div class="viewer-grid three-col">
+        <div class="viewer-cell">
+          <div class="viewer-label">Start Shape</div>
+          <div class="viewer-empty">Select an example above</div>
+          <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+          <canvas class="viewer-canvas" id="morph-canvas-left"></canvas>
+        </div>
+        <div class="viewer-cell">
+          <div class="viewer-label">Our Registered Output (16 morphing transition steps)</div>
+          <div class="viewer-empty">Select an example above</div>
+          <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+          <canvas class="viewer-canvas" id="morph-canvas-center"></canvas>
+        </div>
+        <div class="viewer-cell">
+          <div class="viewer-label">End Shape</div>
+          <div class="viewer-empty">Select an example above</div>
+          <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+          <canvas class="viewer-canvas" id="morph-canvas-right"></canvas>
+        </div>
+      </div>
+      <div class="playback" id="morph-playback">
+        <button class="play-btn" id="morph-play" title="Play / Pause">
+          <svg viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"/></svg>
+        </button>
+        <input type="range" class="frame-slider" id="morph-slider" min="0" max="15" value="0" step="1">
+        <span class="frame-info" id="morph-frame-info">Frame 0 / 15</span>
+        <button class="speed-btn" id="morph-speed">1×</button>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════ Section: Additional Visual Results ═══════ -->
+<div class="section-divider"></div>
+<section class="section" id="visual-results">
+  <div class="section-inner">
+    <h2 class="section-title"><span class="section-num">3</span> Additional Visual Results</h2>
+    <p class="section-desc">Our registration results across fifteen diverse animation sequences.</p>
+    <div class="controls-bar">
+      <div class="select-wrapper">
+        <div class="select-label">
+          <svg viewBox="0 0 24 24"><path d="M3 4h18v2H3V4zm0 7h12v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+          Select a sequence to view
+        </div>
+        <select id="vr-select"></select>
+      </div>
+    </div>
+    <div class="viewer-grid">
+      <div class="viewer-cell">
+        <div class="viewer-label">Input Shapes</div>
+        <div class="viewer-empty">Select a sequence above</div>
+        <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+        <canvas class="viewer-canvas" id="vr-canvas-left"></canvas>
+      </div>
+      <div class="viewer-cell">
+        <div class="viewer-label">Our Registered Output</div>
+        <div class="viewer-empty">Select a sequence above</div>
+        <div class="viewer-loading hidden"><div class="spinner"></div>Loading mesh…</div>
+        <canvas class="viewer-canvas" id="vr-canvas-right"></canvas>
+      </div>
+    </div>
+    <div class="playback" id="vr-playback">
+      <button class="play-btn" id="vr-play" title="Play / Pause">
+        <svg viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"/></svg>
+      </button>
+      <input type="range" class="frame-slider" id="vr-slider" min="0" max="3" value="0" step="1">
+      <span class="frame-info" id="vr-frame-info">Frame 0 / 3</span>
+      <button class="speed-btn" id="vr-speed">1×</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ Footer ═══════ -->
+<footer>
+  <p style="font-size:0.72rem;opacity:0.7;">
+    Webpage template inspired by academic project pages. Built with Three.js for interactive 3D visualization.
+  </p>
+</footer>
+
+<!-- ═══════ JavaScript ═══════ -->
+<script type="module">
+import * as THREE from 'three';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ─────────── Data Configuration ─────────── */
+const VISUAL_RESULTS = Array.from({ length: 15 }, (_, i) => `Sequence_${String(i+1).padStart(2,'0')}`);
+
+const GEOM_EXAMPLES = [
+  { id: 'Case_01', label: 'Rhino to Hippo', frames: 4 },
+  { id: 'Case_02', label: 'Eagle to Pigeon', frames: 4 },
+  { id: 'Case_03', label: 'Teapot Variations', frames: 4 },
+];
+
+const INTERP_EXAMPLES = [
+  { id: 'Case_01', label: 'Motion Sequence 1', initFrames: [0,5,11,15] },
+  { id: 'Case_02', label: 'Motion Sequence 2', initFrames: [0,5,11,15] },
+  { id: 'Case_03', label: 'Motion Sequence 3', initFrames: [0,5,11,15] },
+];
+
+
+const MORPH_EXAMPLES = [
+  { id: 'Case_01', label: 'Strong Man to Old Man', initFrames: [0,15] },
+  { id: 'Case_02', label: 'Leather Shoes to Heeled Ankle Boots', initFrames: [0,15] },
+  { id: 'Case_03', label: 'Upright Chair to Reclining Chair', initFrames: [0,15] },
+];
+
+const COMPARISON_SEQS = Array.from({ length: 5 }, (_, i) => `Sequence_${String(i+1).padStart(2,'0')}`);
+
+const CMP_METHODS = [
+  { key: 'clusterreg',    label: 'ClusterReg' },
+  { key: 'NDP',           label: 'NDP' },
+  { key: 'LNDP',          label: 'LNDP' },
+  { key: 'dpf',           label: 'DPF' },
+  { key: 'oar',           label: 'OAReg' },
+  { key: 'actionmesh',    label: 'ActionMesh' },
+];
+
+/* ─────────── PLY Loader singleton ─────────── */
+const plyLoader = new PLYLoader();
+
+/* ─────────── Viewer3D Class ─────────── */
+class Viewer3D {
+  constructor(canvasId) {
+    this.canvas = document.getElementById(canvasId);
+    this.cell = this.canvas.closest('.viewer-cell');
+    this.loadingEl = this.cell.querySelector('.viewer-loading');
+    this.emptyEl = this.cell.querySelector('.viewer-empty');
+    this.meshes = [];
+    this.currentFrame = 0;
+    this.initialized = false;
+  }
+
+  init() {
+    if (this.initialized) return;
+    this.initialized = true;
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x111827);
+
+    this.camera = new THREE.PerspectiveCamera(40, w / h, 0.01, 100);
+    this.camera.position.set(0, 0.3, 2);
+
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(w, h, false);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    this.controls = new OrbitControls(this.camera, this.canvas);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.08;
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    this.scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    dirLight.position.set(2, 3, 4);
+    this.scene.add(dirLight);
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+    dirLight2.position.set(-2, -1, -2);
+    this.scene.add(dirLight2);
+  }
+
+  async loadFrames(urls) {
+    this.init();
+    this.showLoading(true);
+    this.clearMeshes();
+
+    const promises = urls.map(url =>
+      plyLoader.loadAsync(url).then(geometry => {
+        geometry.computeVertexNormals();
+        const hasColor = geometry.hasAttribute('color');
+        const material = new THREE.MeshPhongMaterial({
+          vertexColors: hasColor,
+          color: hasColor ? 0xffffff : 0xb0b0b0,
+          shininess: 30,
+          side: THREE.DoubleSide,
+        });
+        return new THREE.Mesh(geometry, material);
+      })
+    );
+
+    try {
+      const loaded = await Promise.all(promises);
+      loaded.forEach((mesh, i) => {
+        mesh.visible = (i === 0);
+        this.scene.add(mesh);
+        this.meshes.push(mesh);
+      });
+      this.currentFrame = 0;
+      this.fitCamera();
+      this.showLoading(false);
+      if (this.emptyEl) this.emptyEl.style.display = 'none';
+    } catch (e) {
+      console.error('Error loading PLY:', e);
+      this.showLoading(false);
+    }
+  }
+
+  showFrame(idx) {
+    if (idx < 0 || idx >= this.meshes.length) return;
+    this.meshes.forEach((m, i) => { m.visible = (i === idx); });
+    this.currentFrame = idx;
+  }
+
+  fitCamera() {
+    if (!this.meshes.length) return;
+    const box = new THREE.Box3().setFromObject(this.meshes[0]);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3()).length();
+    const dist = size / (2 * Math.tan(Math.PI * this.camera.fov / 360));
+
+    this.controls.target.copy(center);
+    this.camera.position.copy(center).add(new THREE.Vector3(0, size * 0.15, dist * 1.1));
+    this.camera.near = size * 0.001;
+    this.camera.far = size * 20;
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
+  }
+
+  clearMeshes() {
+    this.meshes.forEach(m => {
+      this.scene.remove(m);
+      m.geometry.dispose();
+      m.material.dispose();
+    });
+    this.meshes = [];
+  }
+
+  showLoading(show) {
+    if (this.loadingEl) {
+      this.loadingEl.classList.toggle('hidden', !show);
+    }
+  }
+
+  render() {
+    if (!this.initialized) return;
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  resize() {
+    if (!this.initialized) return;
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h, false);
+  }
+
+  copyCamera(other) {
+    if (!this.initialized || !other.initialized) return;
+    this.camera.position.copy(other.camera.position);
+    this.camera.quaternion.copy(other.camera.quaternion);
+    this.controls.target.copy(other.controls.target);
+  }
+
+}
+
+/* ─────────── Section Controller ─────────── */
+class SectionController {
+  constructor(config) {
+    this.prefix = config.prefix;
+    this.left = new Viewer3D(`${config.prefix}-canvas-left`);
+    this.right = new Viewer3D(`${config.prefix}-canvas-right`);
+    // Optional center viewer (for 3-panel comparison)
+    const centerCanvas = document.getElementById(`${config.prefix}-canvas-center`);
+    this.center = centerCanvas ? new Viewer3D(`${config.prefix}-canvas-center`) : null;
+    this.playing = false;
+    this.speed = 1;
+    this.speeds = [0.5, 1, 2, 4];
+    this.speedIdx = 1;
+    this.totalFrames = config.totalFrames || 4;
+    this.currentFrame = 0;
+    this.lastTime = 0;
+    this.frameInterval = 500; // ms per frame at 1× speed
+
+    // Frame mapping for left viewer (for interpolation/morphing)
+    this.leftFrameMap = config.leftFrameMap || null; // e.g., {0:0, 5:1, 11:2, 15:3}
+    this.leftAvailableFrames = config.leftAvailableFrames || null; // e.g., [0,5,11,15]
+
+    // Camera sync
+    this._setupCameraSync();
+
+    // UI elements
+    this.playBtn = document.getElementById(`${config.prefix}-play`);
+    this.slider = document.getElementById(`${config.prefix}-slider`);
+    this.frameInfo = document.getElementById(`${config.prefix}-frame-info`);
+    this.speedBtn = document.getElementById(`${config.prefix}-speed`);
+
+    this._setupControls();
+  }
+
+  _setupCameraSync() {
+    // Sync cameras when right viewer's controls change
+    const syncToOthers = (source) => {
+      const targets = [this.left, this.right, this.center].filter(v => v && v !== source && v.initialized);
+      if (source.initialized) targets.forEach(t => t.copyCamera(source));
+    };
+    this._syncFromRight = () => syncToOthers(this.right);
+    this._syncFromLeft = () => syncToOthers(this.left);
+    this._syncFromCenter = this.center ? () => syncToOthers(this.center) : null;
+  }
+
+  attachSyncListeners() {
+    if (this.right.controls) {
+      this.right.controls.addEventListener('change', this._syncFromRight);
+    }
+    if (this.left.controls) {
+      this.left.controls.addEventListener('change', this._syncFromLeft);
+    }
+    if (this.center && this.center.controls) {
+      this.center.controls.addEventListener('change', this._syncFromCenter);
+    }
+  }
+
+  _setupControls() {
+    this.playBtn.addEventListener('click', () => this.togglePlay());
+    this.slider.addEventListener('input', () => {
+      this.currentFrame = parseInt(this.slider.value);
+      this.updateFrame();
+    });
+    this.speedBtn.addEventListener('click', () => {
+      this.speedIdx = (this.speedIdx + 1) % this.speeds.length;
+      this.speed = this.speeds[this.speedIdx];
+      this.speedBtn.textContent = `${this.speed}×`;
+    });
+  }
+
+  updateSliderRange(max) {
+    this.totalFrames = max + 1;
+    this.slider.max = max;
+    this.slider.value = 0;
+    this.currentFrame = 0;
+    this.updateFrame();
+  }
+
+  goToFrame(idx) {
+    this.currentFrame = Math.min(idx, this.totalFrames - 1);
+    this.slider.value = this.currentFrame;
+    this.updateFrame();
+  }
+
+  togglePlay() {
+    this.playing = !this.playing;
+    this.playBtn.innerHTML = this.playing
+      ? '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
+      : '<svg viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"/></svg>';
+    if (this.playing) this.lastTime = performance.now();
+  }
+
+  tick(time) {
+    if (!this.playing) return;
+    const elapsed = time - this.lastTime;
+    const interval = this.frameInterval / this.speed;
+    if (elapsed >= interval) {
+      this.lastTime = time;
+      this.currentFrame = (this.currentFrame + 1) % this.totalFrames;
+      this.slider.value = this.currentFrame;
+      this.updateFrame();
+    }
+  }
+
+  updateFrame() {
+    // Right viewer: direct frame mapping
+    this.right.showFrame(this.currentFrame);
+
+    // Center viewer (if present): direct frame mapping
+    if (this.center) this.center.showFrame(this.currentFrame);
+
+    // Left viewer: use frame mapping if available
+    if (this.leftAvailableFrames && this.leftFrameMap) {
+      const nearest = this._nearestFrame(this.currentFrame);
+      const meshIdx = this.leftFrameMap[nearest];
+      this.left.showFrame(meshIdx);
+    } else {
+      this.left.showFrame(this.currentFrame);
+    }
+
+    this.frameInfo.textContent = `Frame ${this.currentFrame} / ${this.totalFrames - 1}`;
+  }
+
+  _nearestFrame(target) {
+    // Hold previous input frame until the next exact frame is reached
+    let best = this.leftAvailableFrames[0];
+    for (const f of this.leftAvailableFrames) {
+      if (f <= target) best = f;
+    }
+    return best;
+  }
+
+  render() {
+    this.left.render();
+    this.right.render();
+    if (this.center) this.center.render();
+  }
+
+  resize() {
+    this.left.resize();
+    this.right.resize();
+    if (this.center) this.center.resize();
+  }
+}
+
+/* ─────────── URL Helpers ─────────── */
+function padFrame(n) { return String(n).padStart(2, '0'); }
+
+function vrUrls(uid, folder, numFrames) {
+  return Array.from({ length: numFrames }, (_, i) =>
+    `assets/visual_results_of_ours/${uid}/${folder}/mesh_${padFrame(i)}.ply`
+  );
+}
+function geomUrls(exId, folder, numFrames) {
+  return Array.from({ length: numFrames }, (_, i) =>
+    `assets/Application/registration_across_geometric_variations/${exId}/${folder}/mesh_${padFrame(i)}.ply`
+  );
+}
+function interpInitUrls(exId, initFrames) {
+  return initFrames.map(f =>
+    `assets/Application/motion_interpolation/${exId}/input/mesh_${padFrame(f)}.ply`
+  );
+}
+function interpReconUrls(exId) {
+  return Array.from({ length: 16 }, (_, i) =>
+    `assets/Application/motion_interpolation/${exId}/ours/mesh_${padFrame(i)}.ply`
+  );
+}
+function morphInitUrls(exId, initFrames) {
+  return initFrames.map(f =>
+    `assets/Application/mesh_morphing/${exId}/input/mesh_${padFrame(f)}.ply`
+  );
+}
+function morphReconUrls(exId) {
+  return Array.from({ length: 16 }, (_, i) =>
+    `assets/Application/mesh_morphing/${exId}/ours/mesh_${padFrame(i)}.ply`
+  );
+}
+function cmpUrls(uid, method) {
+  return Array.from({ length: 4 }, (_, i) =>
+    `assets/compare_with_other_methods/${uid}/${method}/mesh_${padFrame(i)}.ply`
+  );
+}
+
+/* ─────────── Populate dropdowns ─────────── */
+function populateSelect(selectId, items, prefix) {
+  const sel = document.getElementById(selectId);
+  items.forEach((item, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = typeof item === 'string'
+      ? `${prefix} ${i + 1}`
+      : `${prefix} ${i + 1} — ${item.label}`;
+    sel.appendChild(opt);
+  });
+}
+
+populateSelect('vr-select', VISUAL_RESULTS, 'Sequence');
+populateSelect('geom-select', GEOM_EXAMPLES, 'Case');
+populateSelect('interp-select', INTERP_EXAMPLES, 'Case');
+populateSelect('morph-select', MORPH_EXAMPLES, 'Case');
+populateSelect('cmp-select', COMPARISON_SEQS, 'Sequence');
+
+/* ─────────── Populate comparison method pills ─────────── */
+const cmpMethodsEl = document.getElementById('cmp-methods');
+CMP_METHODS.forEach((m, i) => {
+  const pill = document.createElement('button');
+  pill.className = 'method-pill' + (i === 0 ? ' active' : '');
+  pill.textContent = m.label;
+  pill.dataset.method = m.key;
+  cmpMethodsEl.appendChild(pill);
+});
+
+/* ─────────── Section Controllers ─────────── */
+const vrCtrl = new SectionController({ prefix: 'vr', totalFrames: 4 });
+const geomCtrl = new SectionController({ prefix: 'geom', totalFrames: 4 });
+
+// Motion interpolation: left has sparse frames, right has 16 frames
+const interpLeftMap = {};
+[0,5,11,15].forEach((f, i) => { interpLeftMap[f] = i; });
+const interpCtrl = new SectionController({
+  prefix: 'interp', totalFrames: 16,
+  leftAvailableFrames: [0,5,11,15],
+  leftFrameMap: interpLeftMap,
+});
+
+// Mesh morphing: left = start (static), center = 16 morphing frames, right = end (static)
+const morphCtrl = new SectionController({
+  prefix: 'morph', totalFrames: 16,
+});
+
+const cmpCtrl = new SectionController({ prefix: 'cmp', totalFrames: 4 });
+
+const allControllers = [vrCtrl, geomCtrl, interpCtrl, morphCtrl, cmpCtrl];
+
+/* ─────────── Load handlers ─────────── */
+let currentCmpMethod = CMP_METHODS[0].key;
+
+document.getElementById('vr-select').addEventListener('change', async (e) => {
+  const uid = VISUAL_RESULTS[e.target.value];
+  await Promise.all([
+    vrCtrl.left.loadFrames(vrUrls(uid, 'input', 4)),
+    vrCtrl.right.loadFrames(vrUrls(uid, 'ours', 4)),
+  ]);
+  vrCtrl.updateSliderRange(3);
+  vrCtrl.attachSyncListeners();
+});
+
+document.getElementById('geom-select').addEventListener('change', async (e) => {
+  const ex = GEOM_EXAMPLES[e.target.value];
+  await Promise.all([
+    geomCtrl.left.loadFrames(geomUrls(ex.id, 'input', ex.frames)),
+    geomCtrl.right.loadFrames(geomUrls(ex.id, 'ours', ex.frames)),
+  ]);
+  geomCtrl.updateSliderRange(ex.frames - 1);
+  geomCtrl.attachSyncListeners();
+});
+
+document.getElementById('interp-select').addEventListener('change', async (e) => {
+  const ex = INTERP_EXAMPLES[e.target.value];
+  await Promise.all([
+    interpCtrl.left.loadFrames(interpInitUrls(ex.id, ex.initFrames)),
+    interpCtrl.right.loadFrames(interpReconUrls(ex.id)),
+  ]);
+  interpCtrl.updateSliderRange(15);
+  interpCtrl.attachSyncListeners();
+});
+
+document.getElementById('morph-select').addEventListener('change', async (e) => {
+  const ex = MORPH_EXAMPLES[e.target.value];
+  await Promise.all([
+    morphCtrl.left.loadFrames([morphInitUrls(ex.id, [0])[0]]),
+    morphCtrl.center.loadFrames(morphReconUrls(ex.id)),
+    morphCtrl.right.loadFrames([morphInitUrls(ex.id, [15])[0]]),
+  ]);
+  morphCtrl.updateSliderRange(15);
+  morphCtrl.attachSyncListeners();
+});
+
+async function loadComparison(uid, method) {
+  currentCmpMethod = method;
+  document.getElementById('cmp-right-label').textContent =
+    CMP_METHODS.find(m => m.key === method)?.label || method;
+  await Promise.all([
+    cmpCtrl.left.loadFrames(cmpUrls(uid, 'input')),
+    cmpCtrl.center.loadFrames(cmpUrls(uid, 'ours')),
+    cmpCtrl.right.loadFrames(cmpUrls(uid, method)),
+  ]);
+  cmpCtrl.updateSliderRange(3);
+  cmpCtrl.attachSyncListeners();
+  cmpCtrl.goToFrame(3);
+}
+
+document.getElementById('cmp-select').addEventListener('change', (e) => {
+  const uid = COMPARISON_SEQS[e.target.value];
+  loadComparison(uid, currentCmpMethod);
+});
+
+cmpMethodsEl.addEventListener('click', async (e) => {
+  const pill = e.target.closest('.method-pill');
+  if (!pill) return;
+  cmpMethodsEl.querySelectorAll('.method-pill').forEach(p => p.classList.remove('active'));
+  pill.classList.add('active');
+  const method = pill.dataset.method;
+  currentCmpMethod = method;
+  document.getElementById('cmp-right-label').textContent =
+    CMP_METHODS.find(m => m.key === method)?.label || method;
+  const uid = COMPARISON_SEQS[document.getElementById('cmp-select').value];
+  await cmpCtrl.right.loadFrames(cmpUrls(uid, method));
+  cmpCtrl.updateSliderRange(3);
+  cmpCtrl.attachSyncListeners();
+  cmpCtrl.goToFrame(3);
+});
+
+/* ─────────── Render loop ─────────── */
+function animate(time) {
+  requestAnimationFrame(animate);
+  allControllers.forEach(ctrl => {
+    ctrl.tick(time);
+    ctrl.render();
+  });
+}
+animate(0);
+
+/* ─────────── Resize ─────────── */
+window.addEventListener('resize', () => {
+  allControllers.forEach(ctrl => ctrl.resize());
+});
+
+/* ─────────── Auto-load first examples ─────────── */
+function autoLoad() {
+  document.getElementById('vr-select').dispatchEvent(new Event('change'));
+  document.getElementById('geom-select').dispatchEvent(new Event('change'));
+  document.getElementById('interp-select').dispatchEvent(new Event('change'));
+  document.getElementById('morph-select').dispatchEvent(new Event('change'));
+  document.getElementById('cmp-select').dispatchEvent(new Event('change'));
+}
+// Delay auto-load slightly so page renders first
+setTimeout(autoLoad, 300);
+
+</script>
+</body>
+</html>
