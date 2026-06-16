@@ -899,7 +899,7 @@
     <h2 class="section-title">Method Overview</h2>
     <p class="section-desc">Encode the anchor with its topology, fuse the sequence into one global motion embedding, then query that embedding per vertex per frame.</p>
     <div class="figure-block tight" style="padding:0;">
-      <img src="assets/paper/pipeline.png" alt="MeshLoom pipeline: anchor mesh is encoded into a topology-aware representation; target meshes and optional guided images are fused by a multi-modal transformer encoder into a global motion embedding; a lightweight decoder queries this embedding to produce the registered output sequence.">
+      <img src="assets/paper/pipeline.png" loading="lazy" decoding="async" alt="MeshLoom pipeline: anchor mesh is encoded into a topology-aware representation; target meshes and optional guided images are fused by a multi-modal transformer encoder into a global motion embedding; a lightweight decoder queries this embedding to produce the registered output sequence.">
       <p class="figure-caption left-aligned">
         <strong>Workflow of MeshLoom.</strong>
         Given an input mesh sequence whose frames differ in vertex count and connectivity, our network proceeds in three steps. <strong>(1)</strong> Any frame (typically the first) is designated as the anchor mesh and embedded into a topology-aware representation <em>H<sub>a</sub></em>. <strong>(2)</strong> The remaining frames and their (optional) images are encoded into per-frame shape latents <em>S<sub>t</sub></em> and image features <em>I<sub>t</sub></em>, then fused with <em>H<sub>a</sub></em> by a transformer-based encoder to produce a global motion embedding <em>Z</em>. <strong>(3)</strong> A lightweight deformation decoder queries <em>Z</em> with <em>H<sub>a</sub></em> to predict per-vertex deformations of the anchor mesh at every frame, yielding an output sequence with a consistent vertex count and face connectivity.
@@ -1605,38 +1605,41 @@ const allControllers = [vrCtrl, geomCtrl, interpCtrl, morphCtrl, cmpCtrl];
 /* ─────────── Load handlers ─────────── */
 let currentCmpMethod = CMP_METHODS[0].key;
 
-document.getElementById('vr-select').addEventListener('change', async (e) => {
-  const uid = VISUAL_RESULTS[e.target.value];
+async function loadVrSection() {
+  const uid = VISUAL_RESULTS[document.getElementById('vr-select').value];
   await Promise.all([
     vrCtrl.left.loadFrames(vrUrls(uid, 'input', 4)),
     vrCtrl.right.loadFrames(vrUrls(uid, 'ours', 4)),
   ]);
   vrCtrl.updateSliderRange(3);
   vrCtrl.attachSyncListeners();
-});
+}
+document.getElementById('vr-select').addEventListener('change', loadVrSection);
 
-document.getElementById('geom-select').addEventListener('change', async (e) => {
-  const ex = GEOM_EXAMPLES[e.target.value];
+async function loadGeomSection() {
+  const ex = GEOM_EXAMPLES[document.getElementById('geom-select').value];
   await Promise.all([
     geomCtrl.left.loadFrames(geomUrls(ex.id, 'input', ex.frames)),
     geomCtrl.right.loadFrames(geomUrls(ex.id, 'ours', ex.frames)),
   ]);
   geomCtrl.updateSliderRange(ex.frames - 1);
   geomCtrl.attachSyncListeners();
-});
+}
+document.getElementById('geom-select').addEventListener('change', loadGeomSection);
 
-document.getElementById('interp-select').addEventListener('change', async (e) => {
-  const ex = INTERP_EXAMPLES[e.target.value];
+async function loadInterpSection() {
+  const ex = INTERP_EXAMPLES[document.getElementById('interp-select').value];
   await Promise.all([
     interpCtrl.left.loadFrames(interpInitUrls(ex.id, ex.initFrames)),
     interpCtrl.right.loadFrames(interpReconUrls(ex.id)),
   ]);
   interpCtrl.updateSliderRange(15);
   interpCtrl.attachSyncListeners();
-});
+}
+document.getElementById('interp-select').addEventListener('change', loadInterpSection);
 
-document.getElementById('morph-select').addEventListener('change', async (e) => {
-  const ex = MORPH_EXAMPLES[e.target.value];
+async function loadMorphSection() {
+  const ex = MORPH_EXAMPLES[document.getElementById('morph-select').value];
   await Promise.all([
     morphCtrl.left.loadFrames([morphInitUrls(ex.id, [0])[0]]),
     morphCtrl.center.loadFrames(morphReconUrls(ex.id)),
@@ -1644,7 +1647,8 @@ document.getElementById('morph-select').addEventListener('change', async (e) => 
   ]);
   morphCtrl.updateSliderRange(15);
   morphCtrl.attachSyncListeners();
-});
+}
+document.getElementById('morph-select').addEventListener('change', loadMorphSection);
 
 async function loadComparison(uid, method) {
   currentCmpMethod = method;
@@ -1660,10 +1664,11 @@ async function loadComparison(uid, method) {
   cmpCtrl.goToFrame(3);
 }
 
-document.getElementById('cmp-select').addEventListener('change', (e) => {
-  const uid = COMPARISON_SEQS[e.target.value];
-  loadComparison(uid, currentCmpMethod);
-});
+async function loadCmpSection() {
+  const uid = COMPARISON_SEQS[document.getElementById('cmp-select').value];
+  return loadComparison(uid, currentCmpMethod);
+}
+document.getElementById('cmp-select').addEventListener('change', loadCmpSection);
 
 cmpMethodsEl.addEventListener('click', async (e) => {
   const pill = e.target.closest('.method-pill');
@@ -1696,16 +1701,51 @@ window.addEventListener('resize', () => {
   allControllers.forEach(ctrl => ctrl.resize());
 });
 
-/* ─────────── Auto-load first examples ─────────── */
-function autoLoad() {
-  document.getElementById('vr-select').dispatchEvent(new Event('change'));
-  document.getElementById('geom-select').dispatchEvent(new Event('change'));
-  document.getElementById('interp-select').dispatchEvent(new Event('change'));
-  document.getElementById('morph-select').dispatchEvent(new Event('change'));
-  document.getElementById('cmp-select').dispatchEvent(new Event('change'));
+/* ─────────── Lazy + prefetch-next loading ───────────
+   Each section is loaded the first time it scrolls near the viewport.
+   When it finishes loading, the next section in page order is automatically
+   pre-fetched so that scrolling down feels instant. Each section loads at
+   most once via this chain; manual select-change still works normally.    */
+const SECTION_CHAIN = [
+  { sentinel: 'comparison',     loader: loadCmpSection    },
+  { sentinel: 'app-geom',       loader: loadGeomSection   },
+  { sentinel: 'app-interp',     loader: loadInterpSection },
+  { sentinel: 'app-morph',      loader: loadMorphSection  },
+  { sentinel: 'visual-results', loader: loadVrSection     },
+];
+
+const sectionLoaded = new Array(SECTION_CHAIN.length).fill(false);
+
+async function ensureSectionLoaded(i) {
+  if (i < 0 || i >= SECTION_CHAIN.length || sectionLoaded[i]) return;
+  sectionLoaded[i] = true;
+  try {
+    await SECTION_CHAIN[i].loader();
+  } catch (err) {
+    console.error(`Section ${SECTION_CHAIN[i].sentinel} load failed:`, err);
+  }
+  // Pre-warm the next section so it's ready when the user reaches it.
+  ensureSectionLoaded(i + 1);
 }
-// Delay auto-load slightly so page renders first
-setTimeout(autoLoad, 300);
+
+SECTION_CHAIN.forEach((s, i) => {
+  const sentinel = document.getElementById(s.sentinel);
+  if (!sentinel) return;
+  if (!('IntersectionObserver' in window)) {
+    ensureSectionLoaded(i);
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        ensureSectionLoaded(i);
+        io.disconnect();
+        break;
+      }
+    }
+  }, { rootMargin: '600px 0px' });
+  io.observe(sentinel);
+});
 
 </script>
 </body>
